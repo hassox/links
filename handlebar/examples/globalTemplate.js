@@ -10,9 +10,10 @@ var handlebar = new Chain.Link("handlebar", new Handlebar({viewRoots : ["globalT
 function handler(env){
   env.data = { name : "Harry" }
   env.handlebar = {
-    template  : "helloFoo",
     format    : "html"
   }
+  env.handlebar.template = env.request.uri.path;
+
   env.send(handlebar);
 }
 

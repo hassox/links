@@ -61,35 +61,49 @@ function HandlebarPrototype(){
 
   function findTemplate(name, format, paths){
     var promise = new process.Promise();
-    var files   = posix.readdir(paths[0]);
-    files.addCallback(function(fileList){
-      sys.puts(sys.inspect(fileList))
-      promise.emitSuccess()
+    promise.timeout(500);
+    var templateName = paths[0] + "/" + name + "." + format + ".js"
+    var templateContent = posix.cat(templateName, "utf8");
+
+    templateContent.addCallback(function(content){
+      promise.emitSuccess(content);
     })
 
-    files.addErrback(function(error){
-      sys.puts("ERROR: " + sys.inspect(error));
-      promise.emitSuccess()
+    templateContent.addErrback(function(error){
+      // call again if paths has more paths to check
+      sys.puts("ADDING THE ERROR");
+      error.handlebar = { "templateName" : templateName}
+      promise.emitError(error)
     })
+
     return promise;
   }
 
   this.onRequest = function(env){
-    var opts = env.handlebar || {};
+    var opts      = env.handlebar || {};
     var settings  = getSettings.call(this, opts);
-    sys.puts(sys.inspect(settings))
     var paths     = settings.viewRoots;
-    opts.format = opts.format || "html";
-
-    sys.puts(sys.inspect(paths));
-
+    opts.format   = opts.format || "html";
     // find the template
     var template = findTemplate(opts.template, opts.format, paths);
+
     template.addCallback(function(templateContent){
-      sys.puts("The template content is");
-      sys.puts(templateContent);
+      env.body = templateContent
       env.done();
     })
+
+    template.addErrback(function(error){
+      var templateName = templateNameFromOpts(opts)
+      var msg = "Failed to render template:\n" + templateName
+      env.body = msg;
+      env.body += "\ntemplateName" + templateName
+      env.status = 404;
+      env.done();
+    })
+  }
+
+  function templateNameFromOpts(opts){
+    return opts.template + "." + opts.format;
   }
 }
 
