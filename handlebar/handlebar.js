@@ -115,7 +115,7 @@ function HandlebarPrototype(){
     env.handlebar.data = env.handlebar.data || env.data || {};
 
     opts.format   = opts.format || "html";
-    var template = findTemplate.call(this, opts, paths);
+    var template  = findTemplate.call(this, opts, paths);
 
     template.addCallback(function(templateContent){
       env.body = Mustache.to_html(templateContent, env.handlebar.data);
@@ -134,6 +134,11 @@ function HandlebarPrototype(){
       env.status = 404;
       env.done();
     })
+  }
+
+  this.register = function(app, viewRoots){
+    this.components[app] = {};
+    this.components[app].viewRoots = viewRoots;
   }
 }
 
