@@ -120,7 +120,7 @@ function HandlebarPrototype(){
     template.addCallback(function(templateContent){
       env.body = Mustache.to_html(templateContent, env.handlebar.data);
 
-      // Add a header for the format
+      // TODO: Add a header for the format
       // env.header["Content-Type"] = formatMimeType(opts.format)
       env.done();
     })
