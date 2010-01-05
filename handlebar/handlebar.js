@@ -43,39 +43,67 @@
 
 var sys       = require('sys');
 var posix     = require('posix');
+var path      = require('path');
 var Mustache  = require('./vendor/mustache.js/mustache').Mustache;
 
 function Handlebar(opts){
   this.viewRoots  = opts.viewRoots || ["views"];
   this.components = {};
   this.components.global  = {};
-  this.components.global.viewRoots = this.viewRoots
+  this.components.global.viewRoots = this.viewRoots;
+  this.templateCache = {};
 }
-
 
 function HandlebarPrototype(){
   function getSettings(opts){
     var comp = opts.owner || "global";
+    opts.owner = comp;
+    if(!this.templateCache[comp])
+      this.templateCache[comp] = {}; // setup the view cache
+
     return this.components[comp];
   }
 
-  function findTemplate(name, format, paths){
+  function templateNameFromOpts(opts){
+    return opts.template + "." + opts.format;
+  }
+
+  function findTemplate(opts, paths){
+    var self = this;
     var promise = new process.Promise();
     promise.timeout(500);
-    var templateName = paths[0] + "/" + name + "." + format + ".js"
-    var templateContent = posix.cat(templateName, "utf8");
+    var thePath           = paths[paths.length - 1];
+    var templateName      = templateNameFromOpts(opts);
+    var fullTemplatePath  = path.join(thePath, templateNameFromOpts(opts) + ".js")
 
-    templateContent.addCallback(function(content){
-      promise.emitSuccess(content);
-    })
+    // get the cached template if it exists
+    var templateContent = self.templateCache[opts.owner][templateName]
+    if(templateContent){
+      setTimeout(function(){ promise.emitSuccess(templateContent) }, 0);
+    } else {
+      templateContent = posix.cat(fullTemplatePath, "utf8");
 
-    templateContent.addErrback(function(error){
-      // call again if paths has more paths to check
-      sys.puts("ADDING THE ERROR");
-      error.handlebar = { "templateName" : templateName}
-      promise.emitError(error)
-    })
+      templateContent.addCallback(function(content){
+        self.templateCache[opts.owner][templateName] = content
+        promise.emitSuccess(content);
+      })
 
+      templateContent.addErrback(function(error){
+        if(paths.length > 1) {
+          var nextTry = findTemplate.call(self, opts, paths.slice(0, paths.length - 1))
+          nextTry.addCallback(function(content){
+            promise.emitSuccess(content);
+          });
+
+          nextTry.addErrback(function(error){
+            promise.emitError(error);
+          });
+        } else {
+          error.handlebar = { "templateName" : templateName}
+          promise.emitError(error)
+        }
+      })
+    }
     return promise;
   }
 
@@ -83,27 +111,29 @@ function HandlebarPrototype(){
     var opts      = env.handlebar || {};
     var settings  = getSettings.call(this, opts);
     var paths     = settings.viewRoots;
+
+    env.handlebar.data = env.handlebar.data || env.data || {};
+
     opts.format   = opts.format || "html";
-    // find the template
-    var template = findTemplate(opts.template, opts.format, paths);
+    var template = findTemplate.call(this, opts, paths);
 
     template.addCallback(function(templateContent){
-      env.body = templateContent
+      env.body = Mustache.to_html(templateContent, env.handlebar.data);
+
+      // Add a header for the format
+      // env.header["Content-Type"] = formatMimeType(opts.format)
       env.done();
     })
 
     template.addErrback(function(error){
       var templateName = templateNameFromOpts(opts)
       var msg = "Failed to render template:\n" + templateName
+      msg += "\n" + sys.inspect(error)
       env.body = msg;
       env.body += "\ntemplateName" + templateName
       env.status = 404;
       env.done();
     })
-  }
-
-  function templateNameFromOpts(opts){
-    return opts.template + "." + opts.format;
   }
 }
 
